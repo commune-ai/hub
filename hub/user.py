@@ -1,10 +1,10 @@
 
 
-import hub as c
+import commune as c
 
 class User:
    
-    def __init__(self, password='12345' , crypto_type=2, **data):
+    def __init__(self, password='12345' , crypto_type=1, **data):
         self.set_key(password=password, crypto_type=crypto_type)
         self.data = data
     
@@ -49,20 +49,6 @@ class User:
     def resolve_module_path(self, module):
         return c.abspath(f'~/.users/{self.key.ss58_address}/{module}.json')
     
-    def add_module(self, path='./', update=False):
-        path = c.resolve_path(path)
-        code = c.file2text(path)
-        name = path.split('/')[-1]
-        params = {"code": code, 
-                  "name": name, 
-                  "time": c.time(), 
-                  "key": self.key.ss58_address, 
-                  "update": update}
-        data =  self.sign(params)
-        from .hub import Hub
-        hub = Hub()
-        return hub.add_module(data)
-    
     def get_module_name(self, path='./'):
         path = c.resolve_path(path)
         return path.split('/')[-1]
@@ -91,6 +77,7 @@ class User:
 
     def __repr__(self):
         return f'User(key={self.key.ss58_address} type={self.key.crypto_type})'
+    
     def __str__(self):
         return self.__repr__()
 

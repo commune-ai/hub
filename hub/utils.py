@@ -1,6 +1,6 @@
 
 import json
-import hub as c
+import commune as c
 import os
 
 def load_json(file_path, default={}):

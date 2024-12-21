@@ -24,8 +24,6 @@ CMD_STR="docker run -d \
   --shm-size $SHM_SIZE \
   -v ~/.$NAME:/root/.$NAME \
   -v $PWD:/app \
-  -p $BACKEND_PORT:$BACKEND_PORT \
-  -p $FRONTEND_PORT:$FRONTEND_PORT \
   --restart unless-stopped \
   --privileged
   $CONTAINER_NAME
