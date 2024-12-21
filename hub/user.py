@@ -36,14 +36,15 @@ class User:
         Output:
         dict(
             data -> {hash:hash(data) time:utc_timestamp}
-            signatures -> {address: {signature: signature(data), time: utc_timestamp, crypto_type: crypto_type}}
+            signature -> {address: {signature: signature(data), time: utc_timestamp, crypto_type: crypto_type}}
         )
         """
+        
         data = c.copy(data)
-        if "signatures" not in data:
-            data = {"data": data, "signatures": {}}
+        if "signature" not in data:
+            data = {"data": data, "signature": {}}
         sigdata = {"hash": c.hash(data["data"]), "time": c.time()}
-        data['signatures'][self.key.ss58_address] ={'signature': self.key.sign(sigdata).hex(),'crypto_type': self.key.crypto_type,"time": sigdata["time"] }
+        data['signature'][self.key.ss58_address] ={'signature': self.key.sign(sigdata).hex(),'crypto_type': self.key.crypto_type,"time": sigdata["time"] }
         return data
     
     def resolve_module_path(self, module):
@@ -56,11 +57,11 @@ class User:
     @classmethod
     def verify(cls, data, max_staleness=10):
         data = c.copy(data)
-        assert 'data' in data and 'signatures' in data, 'Data must have data and signatures'    
-        signatures = data['signatures']
+        assert 'data' in data and 'signature' in data, 'Data must have data and signature'    
+        signature = data['signature']
         data_hash = c.hash(data["data"])
         results = []
-        for sigaddress, sig in signatures.items():
+        for sigaddress, sig in signature.items():
             staleness = c.time() - sig['time']
             assert staleness < max_staleness, f'Staleness {staleness} > {max_staleness}'
             sigdata = {"hash": data_hash, "time": sig["time"]}
@@ -70,7 +71,7 @@ class User:
     
     @classmethod
     def verify_threshold(self, data, addresses, n=1):     
-        n_sig_addresses = len([address for address in addresses if address in data['signatures']])
+        n_sig_addresses = len([address for address in addresses if address in data['signature']])
         if n_sig_addresses < n:
             return False
         return self.verify(data)

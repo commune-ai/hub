@@ -3,15 +3,12 @@ import uvicorn
 import os
 import json
 from pydantic import BaseModel
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 import commune as c 
-# Pydantic model for module dat
 import requests
-
 from .utils import load_json, save_json, logs, ls
 
 class Hub:
-
     avoid_terms = ['__pycache__', '.ipynb_checkpoints', "node_modules", ".git", ".lock", "public", "json"]
     server_port = 8000
     app_port = 3000
@@ -25,6 +22,9 @@ class Hub:
     def __init__(self,password='12345',**kwargs):
         self.password = password
     
+    def rm_module(self, module):
+        return c.rm(self.module_path(module))
+
     def module_path(self, module):
         return f"{self.modules_path}/{module}"
     
@@ -44,30 +44,35 @@ class Hub:
         assert staleness < max_staleness, "Data is too old {}".format(staleness)
         return True
     
-    def module_exists(self, module):
+    def exists(self, module):
         return os.path.exists(self.module_path(module))
     
-
-    def get_module_history_path(self, module):
-        return f"{self.modules_path}/{module}/history"
-    
-
     def get_user(self, key):
         from .user import User
         return User(key)
 
-
-
-    def add(self, path='./', description=None, update=True, password=None):
+    def resolve_password(self, password:Optional[Union[str, None]]=None):
+        return password or self.password
+    
+    def fork(self, module, password=None):
+        password = self.resolve_password(password)
+        user = self.get_user(password)
+        module_info = self.module_info(module)
+        code = module_info['code']
+        name = module_info['name']
+        key = module_info['key']
+        data = {"code": code, "name": name, "key": key, "time": c.time()}
+        return user.sign(data)
+    
+    def add(self, path='./',  password=None, update=True):
 
         """
         key: str
         name: str
         code: dict
-
         address: str
         """
-        password = password or self.password
+        password = self.resolve_password(password)
         path = c.resolve_path(path)
         code = c.file2text(path)
         name = path.split('/')[-1]
@@ -76,7 +81,11 @@ class Hub:
                   "key": self.key.ss58_address,
                   'crypto_type': self.key.crypto_type,
                   "update": update}
-        data =  self.get_user(password).sign(params)
+        
+        user = self.get_user(password)
+        data =  user.sign(params)
+
+        assert user.verify(data), "Data not verified"
         
         self.check_module(data['data'])
         data = data['data']
@@ -84,26 +93,28 @@ class Hub:
         code_hash = c.hash(code)
         current_module_path = module_path + '/current' 
         module_info_path = f"{current_module_path}/module.json"
-        module_exists = os.path.exists(module_info_path)
+        exists = os.path.exists(module_info_path)
         module_info = load_json(module_info_path, {})
         last_hash = module_info.get('code_hash', 'NA')
         assert last_hash != code_hash, "Code hashes match {} == {}".format(last_hash, code_hash)
         last_module_path = module_path + '/' + last_hash
         update = data.pop("update", False)
-        # famfff
-        if module_exists: 
+
+        if exists: 
             if not update:
                 raise Exception("Module already exists")
+            
         code = data['code']
         module_info['key'] = data['key']
         module_info['name'] = data['name']
         module_info['time'] = data['time']
         module_info['crypto_type'] = data["crypto_type"]
         module_info['path'] = module_path.replace(os.path.expanduser('~'), '~')
+        module_info['path'] = module_path
         module_info['last_hash'] = last_hash
         module_info['code_hash'] = code_hash
 
-        if module_exists:
+        if exists:
             c.mv(current_module_path, last_module_path)
     
         for p, t in code .items():
@@ -129,23 +140,15 @@ class Hub:
     def get_code(self, module):
         return self.get_module(module)['code']
          
-    def module_exists(self, module: str):
+    def exists(self, module: str):
         return os.path.exists(self.module_info(module))
-    
-    def refresh_modules(self):
-        for module in self.modules():
-            self.get_module(module)
 
     def update(self, module_id: str, module: Dict):
-        if not self.module_exists(module_id):
+        if not self.exists(module_id):
             raise HTTPException(status_code=404, detail="Module not found")
         module = self.get_module(module_id)
         self.save_module(module_id, module)
 
-
-    def serve(self, port=server_port):
-        return c.serve(self.module_name(), port=port)
-    
     def kill_app(self, name=app_name, port=app_port):
         while c.port_used(port):
             c.kill_port(port)
