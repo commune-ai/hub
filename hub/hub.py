@@ -9,22 +9,30 @@ import requests
 from .utils import load_json, save_json, logs, ls
 
 class Hub:
-    avoid_terms = ['__pycache__', '.ipynb_checkpoints', "node_modules", ".git", ".lock", "public", "json"]
     server_port = 8000
     app_port = 3000
     app_name =  __file__.split('/')[-3] + '_app' 
     model='anthropic/claude-3.5-sonnet'
     free = True
-    endpoints = ["get_modules", 'modules', 'add_module', 'remove', 'update', 'test']
-    modules_path = os.path.expanduser('~/.hub/modules')
+    endpoints = ["get_modules", 'modules', 'add', 'remove', 'update', 'test']
+    libname = __file__.split('/')[-1].split('.')[0]
+    storage_path = os.path.expanduser('~/.'+libname)
+    modules_path = os.path.expanduser(f'{storage_path}/modules')
 
     # In-memory storage for modules
-    def __init__(self,password='12345',**kwargs):
-        self.password = password
+    def __init__(self,password=None,**kwargs):
+        self.password = password or self.get_password()
+        self.user = self.get_user(self.password)
     
     def rm_module(self, module):
         return c.rm(self.module_path(module))
-
+    
+    def set_password(self, password):
+        c.put(f'{self.storage_path}/password', password)
+    
+    def get_password(self):
+        return c.get(f'{self.storage_path}/password', '12345')
+    
     def module_path(self, module):
         return f"{self.modules_path}/{module}"
     
@@ -47,15 +55,12 @@ class Hub:
     def exists(self, module):
         return os.path.exists(self.module_path(module))
     
-    def get_user(self, key):
+    def get_user(self, password=None):
+        password = password or self.password
         from .user import User
-        return User(key)
+        return User(password)
 
-    def resolve_password(self, password:Optional[Union[str, None]]=None):
-        return password or self.password
-    
-    def fork(self, module, password=None):
-        password = self.resolve_password(password)
+    def fork(self, module, new_module=None, password=None):
         user = self.get_user(password)
         module_info = self.module_info(module)
         code = module_info['code']
@@ -64,7 +69,14 @@ class Hub:
         data = {"code": code, "name": name, "key": key, "time": c.time()}
         return user.sign(data)
     
-    def add(self, path='./',  password=None, update=True):
+    def remove(self, module, password=None):
+        user = self.get_user(password)
+        module_info = self.module_info(module)
+        owner = module_info['owner']
+        assert user.key.ss58_address in owner, "User not in owners {}".format(owner)
+        return c.rm(self.module_path(module))
+
+    def add(self, path='./',  password=None):
 
         """
         key: str
@@ -72,55 +84,55 @@ class Hub:
         code: dict
         address: str
         """
-        password = self.resolve_password(password)
         path = c.resolve_path(path)
         code = c.file2text(path)
         name = path.split('/')[-1]
-        params = {"code": code, "name": name, 
-                  "time": c.time(), 
-                  "key": self.key.ss58_address,
-                  'crypto_type': self.key.crypto_type,
-                  "update": update}
-        
         user = self.get_user(password)
+
+        params = {"code": code, 
+                  "name": name, 
+                  "time": c.time(), 
+                  "key": user.key.ss58_address}
         data =  user.sign(params)
 
         assert user.verify(data), "Data not verified"
-        
         self.check_module(data['data'])
         data = data['data']
         module_path = self.module_path(data["name"])
-        code_hash = c.hash(code)
         current_module_path = module_path + '/current' 
         module_info_path = f"{current_module_path}/module.json"
         exists = os.path.exists(module_info_path)
         module_info = load_json(module_info_path, {})
         last_hash = module_info.get('code_hash', 'NA')
+        code_hash = c.hash(code)
         assert last_hash != code_hash, "Code hashes match {} == {}".format(last_hash, code_hash)
         last_module_path = module_path + '/' + last_hash
-        update = data.pop("update", False)
-
-        if exists: 
-            if not update:
-                raise Exception("Module already exists")
-            
         code = data['code']
+        module_info['owner'] = user.key.ss58_address
         module_info['key'] = data['key']
         module_info['name'] = data['name']
         module_info['time'] = data['time']
-        module_info['crypto_type'] = data["crypto_type"]
-        module_info['path'] = module_path.replace(os.path.expanduser('~'), '~')
         module_info['path'] = module_path
         module_info['last_hash'] = last_hash
         module_info['code_hash'] = code_hash
-
         if exists:
             c.mv(current_module_path, last_module_path)
-    
+        code_path = current_module_path + '/code'
         for p, t in code .items():
-            c.put_text(current_module_path + '/' +p, t)
+            c.put_text(code_path +p, t)
         save_json(module_info_path, module_info)
         return module_info
+
+    def owners(self, module):
+        return self.module_info(module)['owners']
+    
+    def pwd2key(self, password, crypto_type=1, **kwargs):
+        return c.str2key(password, crypto_type=crypto_type, **kwargs)
+    
+    def is_owner(self, module, password=None):
+        user = self.get_user(password).key.ss58_address
+        module_info = self.module_info(module)
+        return user.address in module_info['owners']
 
     def module_info(self,  model):
         return load_json( self.module_info_path(model) )
@@ -128,7 +140,7 @@ class Hub:
     def get_modules(self):
         return self.modules()
     
-    def module_infos(self):
+    def infos(self):
         return {m: self.module_info(m) for m in self.modules()}
 
     def module2path(self):
@@ -154,15 +166,14 @@ class Hub:
             c.kill_port(port)
         return c.kill(name)
 
-    def app(self, name=app_name, port=app_port, remote=0):
-        self.kill_app(name, port)
-        c.cmd(f"pm2 start yarn --name {name} -- dev --port {port}")
-        return c.logs(name, mode='local' if remote else 'cmd')
-
     def get_key(self, password, **kwargs):
         return c.str2key(password, **kwargs)
     
-    def chain(self, module='app', commit_chain=None, features=['key',  'time', 'code_hash', 'last_hash']):
+    def commits(self, module='app', commit_chain=None, features=['key',  'time', 'code_hash', 'last_hash']):
+        """
+        The commits from a signel app
+        """
+        
         module_info =  self.module_info(module)
         commit_chain = commit_chain or []
         module_path = self.module_path(module)
@@ -175,4 +186,23 @@ class Hub:
         commit_chain = sorted(commit_chain, key=lambda x: x['time'])
         return commit_chain
 
-        
+    def admins(self):
+        return c.get(f'{self.storage_path}/admin', [])
+    
+    def is_admin(self, key_address):
+        return key_address in self.admins()
+    
+    def add_admin(self, key_address):
+        admins = c.get(f'{self.storage_path}/admin', [])
+        if key_address not in admins:
+            admins.append(key_address)
+            c.put(f'{self.storage_path}/admin', admins)
+        return {key_address: 'added', 'admins': admins}
+    
+    def remove_admin(self, key_address):
+        admins = c.get(f'{self.storage_path}/admin', [])
+        if key_address in admins:
+            admins.remove(key_address)
+            c.put(f'{self.storage_path}/admin', admins)
+        return {key_address: 'removed', 'admins': admins}
+    

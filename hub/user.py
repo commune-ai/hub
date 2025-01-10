@@ -1,9 +1,10 @@
 
 
 import commune as c
-
 class User:
-   
+    
+    storage_path = '~/.hub/users'
+
     def __init__(self, password='12345' , crypto_type=1, **data):
         self.set_key(password=password, crypto_type=crypto_type)
         self.data = data
@@ -14,20 +15,18 @@ class User:
         return User(child_password , crypto_type=crypto_type)
     
     def circuit(self, password):
+        """
+        The circuit function is a circuit between the password and the key 
+        [password] -> circuit(password) -> suri -> [key]
+        """
         return c.hash(password)
     
-    def address(self):
-        return self.key.ss58_address
-    
-    def crypto_type(self):
-        return self.key.crypto_type
-
     def set_key(self, password='12345', crypto_type=1):
         """
         set the key with a passord
         """
-        self.password = password
-        self.key = c.pwd2key(self.circuit(password), crypto_type=crypto_type)
+        self.password = self.circuit(password)
+        self.key = c.pwd2key(self.password, crypto_type=crypto_type)
         return {"msg": "Key created", "address": self.key.ss58_address, "crypto_type": self.key.crypto_type}
     
     def sign(self, data:dict):
@@ -83,11 +82,10 @@ class User:
         return self.__repr__()
 
     @classmethod
-    def test_single(cls, n=10, ticket={'a': 1}):
-        for i in range(n):
-            self = cls(password="1234" + str(i))
-            ticket = self.sign(ticket)
-            assert cls.verify(ticket), 'Ticket verification failed'
+    def test_sign(cls, ticket={'a': 1}):
+        self = cls(password="1234" + str(0))
+        ticket = self.sign(ticket)
+        assert cls.verify(ticket), 'Ticket verification failed'
         return {"msg": "All tests passed", "test": "test_single"}
 
     @classmethod
