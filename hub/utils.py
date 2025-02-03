@@ -9,7 +9,6 @@ def load_json(file_path, default={}):
             return json.load(f)
     except:
         return default
-    
 
 def save_json(file_path, data):
     dir_path = os.path.dirname(file_path)
@@ -28,7 +27,6 @@ def save_text(file_path, text):
     with open(file_path, 'w') as f:
         f.write(text)
     return {"msg": "Text saved", "path": file_path}
-
 
 def ls(path:str):
     if not os.path.exists(path):

@@ -27,7 +27,7 @@ def test_threshold( n=10, ticket={'a': 1}):
 #             "key": "key",
 #             "name": "name",
 #             "code": {
-#                 "a": "1",
+#                 "a": "1",``
 #                 "b": "2"
 #             },
 #             "address": "address",
