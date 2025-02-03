@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  scroll-behavior: smooth;
+}
+
+section:nth-child(even) {
+  animation: fadeAndSlideBottomLeft 3s linear both;
+  animation-timeline: view();
+  animation-duration: 1ms;
+  animation-range: entry 0% cover 12%;
+}
+
+section {
+  animation: fadeAndSlideBottomRight 3s linear both;
+  animation-timeline: view();
+  animation-duration: 1ms;
+  animation-range: entry 0% cover 12%;
+}
+
+@keyframes fadeAndSlideBottomRight {
+  from {
+    transform: translate(-5%, -8%);
+
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+}
+
+@keyframes fadeAndSlideBottomLeft {
+  from {
+    transform: translate(5%, -8%);
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+    transform: translate(0, 0);
+  }
+}

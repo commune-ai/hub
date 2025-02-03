@@ -1,28 +1,26 @@
-# THE GENERAL CONTAINER FOR CONNECTING ALL THE ENVIRONMENTS 😈
-FROM ubuntu:22.04
+# Start from an official Node image with version >=16 (e.g., 18 or LTS)
+FROM node:18
+# Set the DEBIAN_FRONTEND to noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 
-#SYSTEM
-ARG DEBIAN_FRONTEND=noninteractive
-RUN usermod -s /bin/bash root
-RUN apt-get update 
+# RUST installation
+RUN apt-get update && apt-get install -y nano build-essential cargo libstd-rust-dev git
 
-#RUST
-RUN apt-get install curl nano build-essential cargo libstd-rust-dev -y
+# PYTHON
+RUN apt-get install -y python3 python3-pip python3-venv
+RUN python3 --version
+# install commune
+RUN npm install -g pm2
+RUN git clone -b main --single-branch https://github.com/commune-ai/commune.git /commune
+RUN pip install -e /commune --break-system-packages
 
-#JS 
-RUN apt-get install -y nodejs npm
-RUN npm install -g pm2 
-
-#PYTHON
-RUN apt-get install python3 python3-pip python3-venv -y
+# Copy package.json and install dependencies
 WORKDIR /app
-
-# make /commune equal to the current directory# 
-# only query the main branch
-RUN git clone -b main --single-branch https://github.com/commune-ai/commune.git ~/commune 
-RUN pip install -e ~/commune
+COPY ./app/package.json .
+RUN yarn install
 COPY . .
-RUN pip install -e ./
+RUN chmod +x run/*
 
-# ENTRYPOINT 
-ENTRYPOINT [ "tail", "-f", "/dev/null"]
+ENTRYPOINT [ "bash", "-c", "./run/app.sh" ]
+
+
